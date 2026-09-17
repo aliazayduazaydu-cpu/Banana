@@ -1,0 +1,1554 @@
+--==================================================
+-- CMD + FLY + ESP
+-- PART 1 / 2
+--==================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+--==================================================
+-- VARIABLES
+--==================================================
+
+local Locked = false
+local Dragging = false
+local DragStart
+local StartPos
+
+local ShiftLockConnection = nil
+
+-- FLY
+local FlySpeed = 50
+local Flying = false
+local BodyVelocity = nil
+local BodyGyro = nil
+local FlyConnection = nil
+
+local FlyGui
+local FlyPanel
+local FlyButton
+local SpeedInput
+local FlyOpen
+
+-- ESP
+local ESPEnabled = false
+local ESPConnection = nil
+local ESPObjects = {}
+
+--==================================================
+-- FLY
+--==================================================
+
+local function initialRise(Character)
+
+    local RiseSpeed = 10
+    local StartTime = tick()
+    local RiseTime = 0.1
+
+    while tick() - StartTime < RiseTime do
+
+        if not BodyVelocity then
+            break
+        end
+
+        BodyVelocity.Velocity =
+            Vector3.new(0, RiseSpeed, 0)
+
+        RunService.RenderStepped:Wait()
+    end
+end
+
+local function startFlying()
+
+    if Flying then
+        return
+    end
+
+    local Character =
+        Player.Character or Player.CharacterAdded:Wait()
+
+    local Humanoid =
+        Character:WaitForChild("Humanoid")
+
+    local Root =
+        Character:WaitForChild("HumanoidRootPart")
+
+    Flying = true
+    Humanoid.PlatformStand = true
+
+    BodyVelocity = Instance.new("BodyVelocity")
+    BodyVelocity.MaxForce =
+        Vector3.new(100000,100000,100000)
+    BodyVelocity.Velocity =
+        Vector3.new(0,0,0)
+    BodyVelocity.Parent = Root
+
+    BodyGyro = Instance.new("BodyGyro")
+    BodyGyro.MaxTorque =
+        Vector3.new(100000,100000,100000)
+    BodyGyro.CFrame = Root.CFrame
+    BodyGyro.Parent = Root
+
+    initialRise(Character)
+
+    FlyConnection =
+        RunService.RenderStepped:Connect(function()
+
+        if not Flying
+        or not Character.Parent
+        or not BodyVelocity
+        or not BodyGyro then
+            return
+        end
+
+        local Camera =
+            workspace.CurrentCamera
+
+        if not Camera then
+            return
+        end
+
+        local MoveDirection =
+            Humanoid.MoveDirection * FlySpeed
+
+        local CameraLookVector =
+            Camera.CFrame.LookVector
+
+        if MoveDirection.Magnitude > 0 then
+
+            if CameraLookVector.Y > 0.2
+            or CameraLookVector.Y < -0.2 then
+
+                MoveDirection =
+                    MoveDirection +
+                    Vector3.new(
+                        0,
+                                               CameraLookVector.Y * FlySpeed,
+                        0
+                    )
+            end
+
+        else
+
+            MoveDirection =
+                BodyVelocity.Velocity:Lerp(
+                    Vector3.new(0,0,0),
+                    0.085
+                )
+        end
+
+        BodyVelocity.Velocity =
+            MoveDirection
+
+        local TiltAngle = 40
+        local TiltFactor = 0
+
+        if FlySpeed ~= 0 then
+            TiltFactor =
+                MoveDirection.Magnitude / FlySpeed
+        end
+
+        local TiltDirection = 1
+
+        if Camera.CFrame:VectorToObjectSpace(
+            MoveDirection
+        ).Z < 0 then
+
+            TiltDirection = -1
+        end
+
+        local TiltCFrame =
+            CFrame.Angles(
+                math.rad(TiltAngle)
+                * TiltFactor
+                * TiltDirection,
+                0,
+                0
+            )
+
+        local TargetCFrame =
+            CFrame.new(
+                Root.Position,
+                Root.Position + CameraLookVector
+            ) * TiltCFrame
+
+        BodyGyro.CFrame =
+            BodyGyro.CFrame:Lerp(
+                TargetCFrame,
+                0.2
+            )
+    end)
+end
+
+local function stopFlying()
+
+    if not Flying then
+        return
+    end
+
+    Flying = false
+
+    local Character = Player.Character
+
+    if Character then
+
+        local Humanoid =
+            Character:FindFirstChildOfClass("Humanoid")
+
+        if Humanoid then
+            Humanoid.PlatformStand = false
+        end
+    end
+
+    if FlyConnection then
+        FlyConnection:Disconnect()
+        FlyConnection = nil
+    end
+
+    if BodyVelocity then
+        BodyVelocity:Destroy()
+        BodyVelocity = nil
+    end
+
+    if BodyGyro then
+        BodyGyro:Destroy()
+        BodyGyro = nil
+    end
+end
+
+--==================================================
+-- SHIFTLOCK
+--==================================================
+
+local function ToggleShiftLock()
+
+    if ShiftLockConnection then
+
+        ShiftLockConnection:Disconnect()
+        ShiftLockConnection = nil
+
+        local Character = Player.Character
+
+        local Humanoid =
+            Character and
+            Character:FindFirstChildOfClass("Humanoid")
+
+        if Humanoid then
+            Humanoid.AutoRotate = true
+        end
+
+        return
+    end
+
+    ShiftLockConnection =
+        RunService.RenderStepped:Connect(function()
+
+        local Character = Player.Character
+
+        if not Character then
+            return
+        end
+
+        local Humanoid =
+            Character:FindFirstChildOfClass("Humanoid")
+
+        local Root =
+            Character:FindFirstChild("HumanoidRootPart")
+
+        local Camera =
+            workspace.CurrentCamera
+
+        if not Humanoid
+        or not Root
+        or not Camera then
+            return
+        end
+
+        Humanoid.AutoRotate = false
+
+        local Look =
+            Camera.CFrame.LookVector
+
+        local FlatLook =
+            Vector3.new(
+                Look.X,
+                0,
+                Look.Z
+            )
+
+        if FlatLook.Magnitude > 0 then
+
+            Root.CFrame =
+                CFrame.new(
+                    Root.Position,
+                    Root.Position + FlatLook
+                )
+        end
+    end)
+end
+
+--==================================================
+-- MAIN GUI
+--==================================================
+
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "CMD_GUI"
+Gui.ResetOnSpawn = false
+Gui.IgnoreGuiInset = true
+Gui.Parent = PlayerGui
+
+local CMD = Instance.new("TextButton")
+CMD.Size = UDim2.new(0,55,0,45)
+CMD.Position = UDim2.new(0.5,-27,0.15,0)
+CMD.BackgroundColor3 =
+    Color3.fromRGB(20,20,20)
+CMD.BorderSizePixel = 2
+CMD.BorderColor3 =
+    Color3.fromRGB(255,0,0)
+CMD.Text = "CMD"
+CMD.TextColor3 =
+    Color3.new(1,1,1)
+CMD.TextSize = 14
+CMD.Font = Enum.Font.GothamBold
+CMD.Parent = Gui
+
+local Edit = Instance.new("TextButton")
+Edit.Size = UDim2.new(0,38,0,45)
+Edit.BackgroundColor3 =
+    Color3.fromRGB(20,20,20)
+Edit.BorderSizePixel = 2
+Edit.BorderColor3 =
+    Color3.fromRGB(255,0,0)
+Edit.Text = "✏️"
+Edit.TextSize = 20
+Edit.Parent = Gui
+
+local CommandBox = Instance.new("TextBox")
+CommandBox.Size = UDim2.new(0,180,0,45)
+CommandBox.BackgroundColor3 =
+    Color3.fromRGB(20,20,20)
+CommandBox.BorderSizePixel = 2
+CommandBox.BorderColor3 =
+    Color3.fromRGB(255,0,0)
+CommandBox.TextColor3 =
+    Color3.new(1,1,1)
+CommandBox.PlaceholderText =
+    "اكتب الأمر..."
+CommandBox.PlaceholderColor3 =
+    Color3.fromRGB(150,150,150)
+CommandBox.Text = ""
+CommandBox.TextSize = 14
+CommandBox.Font = Enum.Font.Gotham
+CommandBox.ClearTextOnFocus = false
+CommandBox.Visible = false
+CommandBox.Parent = Gui
+
+local Menu = Instance.new("Frame")
+Menu.Size = UDim2.new(0,245,0,300)
+Menu.Position =
+    UDim2.new(0.5,-122,0.15,50)
+Menu.BackgroundColor3 =
+    Color3.fromRGB(15,15,15)
+Menu.BorderSizePixel = 2
+Menu.BorderColor3 =
+    Color3.fromRGB(255,0,0)
+Menu.Visible = false
+Menu.Parent = Gui
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1,-120,0,38)
+Title.Position = UDim2.new(0,5,0,0)
+Title.BackgroundTransparency = 1
+Title.Text = "CMD"
+Title.TextColor3 =
+    Color3.new(1,1,1)
+Title.TextSize = 18
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment =
+    Enum.TextXAlignment.Left
+Title.Parent = Menu
+
+local Lock = Instance.new("TextButton")
+Lock.Size = UDim2.new(0,35,0,30)
+Lock.Position = UDim2.new(1,-75,0,4)
+Lock.BackgroundColor3 =
+    Color3.fromRGB(35,35,35)
+Lock.BorderSizePixel = 1
+Lock.BorderColor3 =
+    Color3.fromRGB(100,100,100)
+Lock.Text = "🔓"
+Lock.TextSize = 16
+Lock.Parent = Menu
+
+local Close = Instance.new("TextButton")
+Close.Size = UDim2.new(0,35,0,30)
+Close.Position = UDim2.new(1,-38,0,4)
+Close.BackgroundColor3 =
+    Color3.fromRGB(120,0,0)
+Close.BorderSizePixel = 1
+Close.BorderColor3 =
+    Color3.fromRGB(255,0,0)
+Close.Text = "X"
+Close.TextColor3 =
+    Color3.new(1,1,1)
+Close.TextSize = 16
+Close.Font = Enum.Font.GothamBold
+Close.Parent = Menu
+
+local Scroll = Instance.new("ScrollingFrame")
+Scroll.Size = UDim2.new(1,-10,1,-48)
+Scroll.Position = UDim2.new(0,5,0,43)
+Scroll.BackgroundColor3 =
+    Color3.fromRGB(25,25,25)
+Scroll.BorderSizePixel = 1
+Scroll.BorderColor3 =
+    Color3.fromRGB(60,60,60)
+Scroll.ScrollBarThickness = 5
+Scroll.CanvasSize =
+    UDim2.new(0,0,0,0)
+Scroll.Parent = Menu
+
+local Layout = Instance.new("UIListLayout")
+Layout.Padding = UDim.new(0,3)
+Layout.Parent = Scroll
+
+--==================================================
+-- ESP
+--==================================================
+
+local function RemoveESP()
+
+    ESPEnabled = false
+
+    if ESPConnection then
+        ESPConnection:Disconnect()
+        ESPConnection = nil
+    end
+
+    for _,Objects in pairs(ESPObjects) do
+
+        for _,Object in pairs(Objects) do
+
+            if Object then
+                Object:Destroy()
+            end
+        end
+    end
+
+    ESPObjects = {}
+end
+
+local function CreateESP(TargetPlayer)
+
+    if TargetPlayer == Player then
+        return
+    end
+
+    if ESPObjects[TargetPlayer] then
+        return
+    end
+
+    local Box = Instance.new("Frame")
+    Box.Name = "ESPBox"
+    Box.BackgroundTransparency = 1
+    Box.BorderSizePixel = 1
+    Box.BorderColor3 =
+        Color3.fromRGB(255,0,0)
+    Box.Visible = false
+    Box.Parent = Gui
+
+    local Line = Instance.new("Frame")
+    Line.Name = "ESPLine"
+    Line.AnchorPoint =
+        Vector2.new(0.5,0.5)
+    Line.BackgroundColor3 =
+        Color3.fromRGB(255,0,0)
+    Line.BorderSizePixel = 0
+    Line.Visible = false
+    Line.Parent = Gui
+
+    local Name = Instance.new("TextLabel")
+    Name.Name = "ESPName"
+    Name.BackgroundTransparency = 1
+    Name.TextColor3 =
+        Color3.fromRGB(255,255,255)
+    Name.TextStrokeTransparency = 0
+    Name.TextStrokeColor3 =
+        Color3.fromRGB(0,0,0)
+    Name.TextSize = 13
+    Name.Font = Enum.Font.GothamBold
+    Name.Text = TargetPlayer.Name
+    Name.Visible = false
+    Name.Parent = Gui
+
+    ESPObjects[TargetPlayer] = {
+        Box = Box,
+        Line = Line,
+        Name = Name
+    }
+end
+
+local function UpdateESP()
+
+    if not ESPEnabled then
+        return
+    end
+
+    local Camera =
+        workspace.CurrentCamera
+
+    if not Camera then
+        return
+    end
+
+    local MyCharacter =
+        Player.Character
+
+    local MyRoot =
+        MyCharacter and
+        MyCharacter:FindFirstChild(
+            "HumanoidRootPart"
+        )
+
+    if not MyRoot then
+        return
+    end
+
+    local MyScreen =
+        Camera:WorldToViewportPoint(
+            MyRoot.Position
+        )
+
+    for TargetPlayer,Objects in pairs(ESPObjects) do
+
+        local Character =
+            TargetPlayer.Character
+
+        local Root =
+            Character and
+            Character:FindFirstChild(
+                "HumanoidRootPart"
+            )
+
+        local Head =
+            Character and
+            Character:FindFirstChild("Head")
+
+        local Humanoid =
+            Character and
+            Character:FindFirstChildOfClass(
+                "Humanoid"
+            )
+
+        if Root
+        and Head
+        and Humanoid
+        and Humanoid.Health > 0 then
+
+            local Top =
+                Camera:WorldToViewportPoint(
+                    Head.Position +
+                    Vector3.new(0,0.6,0)
+                )
+
+            local Bottom =
+                Camera:WorldToViewportPoint(
+                    Root.Position -
+                    Vector3.new(0,3,0)
+                )
+
+            local Center =
+                Camera:WorldToViewportPoint(
+                    Root.Position
+                )
+
+            if Top.Z > 0
+            and Bottom.Z > 0 then
+
+                local Height =
+                    math.abs(
+                        Bottom.Y - Top.Y
+                    )
+
+                local Width =
+                    Height * 0.55
+
+                local X =
+                    Center.X - Width / 2
+
+                local Y = Top.Y
+
+                -- مربع
+                Objects.Box.Position =
+                    UDim2.fromOffset(X,Y)
+
+                Objects.Box.Size =
+                    UDim2.fromOffset(
+                        Width,
+                        Height
+                    )
+
+                Objects.Box.Visible = true
+
+                -- الاسم
+                Objects.Name.Position =
+                    UDim2.fromOffset(
+                        Center.X - Width,
+                        Y - 20
+                    )
+
+                Objects.Name.Size =
+                    UDim2.fromOffset(
+                        Width * 2,
+                        18
+                    )
+
+                Objects.Name.Text =
+                    TargetPlayer.Name
+
+                Objects.Name.Visible = true
+
+                -- الخط
+                local TargetPoint =
+                    Vector2.new(
+                        Center.X,
+                        Bottom.Y
+                    )
+
+                local MyPoint =
+                    Vector2.new(
+                        MyScreen.X,
+                        MyScreen.Y
+                    )
+
+                local Difference =
+                    TargetPoint - MyPoint
+
+                local Distance =
+                    Difference.Magnitude
+
+                local Middle =
+                    (TargetPoint + MyPoint) / 2
+
+                Objects.Line.Position =
+                    UDim2.fromOffset(
+                        Middle.X,
+                        Middle.Y
+                    )
+
+                Objects.Line.Size =
+                    UDim2.fromOffset(
+                        Distance,
+                        1
+                    )
+
+                Objects.Line.Rotation =
+                    math.deg(
+                        math.atan2(
+                            Difference.Y,
+                            Difference.X
+                        )
+                    )
+
+                Objects.Line.Visible = true
+
+            else
+
+                Objects.Box.Visible = false
+                Objects.Line.Visible = false
+                Objects.Name.Visible = false
+            end
+
+        else
+
+            Objects.Box.Visible = false
+            Objects.Line.Visible = false
+            Objects.Name.Visible = false
+        end
+    end
+end
+
+local function StartESP()
+
+    if ESPEnabled then
+        return
+    end
+
+    ESPEnabled = true
+
+    for _,TargetPlayer in
+        ipairs(Players:GetPlayers()) do
+
+        if TargetPlayer ~= Player then
+            CreateESP(TargetPlayer)
+        end
+    end
+
+    ESPConnection =
+        RunService.RenderStepped:Connect(
+            UpdateESP
+        )
+end
+
+Players.PlayerAdded:Connect(function(TargetPlayer)
+
+    if ESPEnabled then
+        CreateESP(TargetPlayer)
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(TargetPlayer)
+
+    local Objects =
+        ESPObjects[TargetPlayer]
+
+    if Objects then
+
+        for _,Object in pairs(Objects) do
+
+            if Object then
+                Object:Destroy()
+            end
+        end
+
+        ESPObjects[TargetPlayer] = nil
+    end
+end)--==================================================
+-- CMD + FLY + ESP
+-- PART 2 / 2
+--==================================================
+
+--==================================================
+-- تحريك CMD
+--==================================================
+
+local function UpdatePositions()
+
+    local P = CMD.Position
+
+    Edit.Position = UDim2.new(
+        P.X.Scale,
+        P.X.Offset + 60,
+        P.Y.Scale,
+        P.Y.Offset
+    )
+
+    CommandBox.Position = UDim2.new(
+        P.X.Scale,
+        P.X.Offset + 103,
+        P.Y.Scale,
+        P.Y.Offset
+    )
+
+    Menu.Position = UDim2.new(
+        P.X.Scale,
+        P.X.Offset - 95,
+        P.Y.Scale,
+        P.Y.Offset + 50
+    )
+end
+
+UpdatePositions()
+
+CMD.InputBegan:Connect(function(Input)
+
+    if Locked then
+        return
+    end
+
+    if Input.UserInputType ==
+        Enum.UserInputType.MouseButton1
+        or Input.UserInputType ==
+        Enum.UserInputType.Touch then
+
+        Dragging = true
+        DragStart = Input.Position
+        StartPos = CMD.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(Input)
+
+    if not Dragging or Locked then
+        return
+    end
+
+    if Input.UserInputType ==
+        Enum.UserInputType.MouseMovement
+        or Input.UserInputType ==
+        Enum.UserInputType.Touch then
+
+        local Delta =
+            Input.Position - DragStart
+
+        CMD.Position = UDim2.new(
+            StartPos.X.Scale,
+            StartPos.X.Offset + Delta.X,
+            StartPos.Y.Scale,
+            StartPos.Y.Offset + Delta.Y
+        )
+
+        UpdatePositions()
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(Input)
+
+    if Input.UserInputType ==
+        Enum.UserInputType.MouseButton1
+        or Input.UserInputType ==
+        Enum.UserInputType.Touch then
+
+        Dragging = false
+    end
+end)
+
+--==================================================
+-- FLY GUI
+--==================================================
+
+FlyGui = Instance.new("ScreenGui")
+FlyGui.Name = "FlyControlPanel"
+FlyGui.ResetOnSpawn = false
+FlyGui.Enabled = false
+FlyGui.Parent = PlayerGui
+
+FlyPanel = Instance.new("Frame")
+FlyPanel.Size =
+    UDim2.new(0,200,0,125)
+FlyPanel.Position =
+    UDim2.new(0.5,-100,0.5,-75)
+FlyPanel.BackgroundColor3 =
+    Color3.fromRGB(45,45,45)
+FlyPanel.BackgroundTransparency = 0.05
+FlyPanel.BorderSizePixel = 0
+FlyPanel.Parent = FlyGui
+
+--==================================================
+-- تحريك FLY
+--==================================================
+
+local FlyDragging = false
+local FlyDragStart
+local FlyStartPos
+
+FlyPanel.InputBegan:Connect(function(Input)
+
+    if Input.UserInputType ==
+        Enum.UserInputType.MouseButton1
+        or Input.UserInputType ==
+        Enum.UserInputType.Touch then
+
+        FlyDragging = true
+        FlyDragStart = Input.Position
+        FlyStartPos = FlyPanel.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(Input)
+
+    if not FlyDragging then
+        return
+    end
+
+    if Input.UserInputType ==
+        Enum.UserInputType.MouseMovement
+        or Input.UserInputType ==
+        Enum.UserInputType.Touch then
+
+        local Delta =
+            Input.Position - FlyDragStart
+
+        FlyPanel.Position = UDim2.new(
+            FlyStartPos.X.Scale,
+            FlyStartPos.X.Offset + Delta.X,
+            FlyStartPos.Y.Scale,
+            FlyStartPos.Y.Offset + Delta.Y
+        )
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(Input)
+
+    if Input.UserInputType ==
+        Enum.UserInputType.MouseButton1
+        or Input.UserInputType ==
+        Enum.UserInputType.Touch then
+
+        FlyDragging = false
+    end
+end)
+
+--==================================================
+-- HEADER
+--==================================================
+
+local Header = Instance.new("TextLabel")
+Header.Size = UDim2.new(1,0,0.2)
+Header.BackgroundColor3 =
+    Color3.fromRGB(0,100,150)
+Header.Text = " FLY"
+Header.TextColor3 =
+    Color3.new(1,1,1)
+Header.BorderSizePixel = 0
+Header.Font = Enum.Font.Highway
+Header.TextXAlignment =
+    Enum.TextXAlignment.Left
+Header.TextSize = 18
+Header.Parent = FlyPanel
+
+--==================================================
+-- X
+--==================================================
+
+local FlyClose =
+    Instance.new("TextButton")
+
+FlyClose.Size =
+    UDim2.new(0.1,0,0.9)
+
+FlyClose.Position =
+    UDim2.new(0.89,0,0.05)
+
+FlyClose.BackgroundColor3 =
+    Color3.fromRGB(0,0,0)
+
+FlyClose.BackgroundTransparency = 0.5
+FlyClose.Text = "X"
+FlyClose.TextColor3 =
+    Color3.new(1,1,1)
+FlyClose.BorderSizePixel = 0
+FlyClose.Font =
+    Enum.Font.SourceSans
+FlyClose.TextSize = 18
+FlyClose.Parent = Header
+
+FlyClose.MouseButton1Click:Connect(function()
+
+    FlyGui.Enabled = false
+end)
+
+--==================================================
+-- MINIMIZE
+--==================================================
+
+local FlyMinimize =
+    Instance.new("TextButton")
+
+FlyMinimize.Parent = Header
+FlyMinimize.Size =
+    UDim2.new(0.1,0,0.9)
+
+FlyMinimize.Position =
+    UDim2.new(0.78,0,0.05)
+
+FlyMinimize.BackgroundColor3 =
+    Color3.fromRGB(0,0,0)
+
+FlyMinimize.BorderSizePixel = 0
+
+FlyMinimize.TextColor3 =
+    Color3.fromRGB(255,255,255)
+
+FlyMinimize.BackgroundTransparency = 0.5
+FlyMinimize.Text = "-"
+
+--==================================================
+-- FLY OPEN
+--==================================================
+
+FlyOpen =
+    Instance.new("TextButton")
+
+FlyOpen.Parent = FlyGui
+FlyOpen.Size =
+    UDim2.new(0.1,0,0.15)
+
+FlyOpen.Position =
+    UDim2.new(0.5,0,0.1)
+
+FlyOpen.BackgroundColor3 =
+    Color3.fromRGB(40,40,40)
+
+FlyOpen.TextColor3 =
+    Color3.fromRGB(255,255,255)
+
+FlyOpen.BackgroundTransparency = 0.5
+FlyOpen.Text = "S"
+FlyOpen.Font = Enum.Font.Bangers
+FlyOpen.TextScaled = true
+FlyOpen.Active = true
+FlyOpen.Visible = false
+
+local FlyCorner =
+    Instance.new("UICorner")
+
+FlyCorner.Parent = FlyOpen
+FlyCorner.CornerRadius =
+    UDim.new(1,0)
+
+FlyOpen.MouseButton1Click:Connect(function()
+
+    FlyPanel.Visible = true
+    FlyOpen.Visible = false
+end)
+
+FlyMinimize.MouseButton1Click:Connect(function()
+
+    FlyPanel.Visible = false
+    FlyOpen.Visible = true
+end)
+
+--==================================================
+-- SPEED
+--==================================================
+
+local SpeedBox =
+    Instance.new("TextLabel")
+
+SpeedBox.Size =
+    UDim2.new(0.9,0,0.25)
+
+SpeedBox.Position =
+    UDim2.new(0.05,0,0.65)
+
+SpeedBox.BackgroundColor3 =
+    Color3.fromRGB(60,60,60)
+
+SpeedBox.TextColor3 =
+    Color3.new(1,1,1)
+
+SpeedBox.BorderSizePixel = 0
+SpeedBox.Font =
+    Enum.Font.SourceSans
+
+SpeedBox.TextSize = 20
+SpeedBox.Text = "ㅤㅤㅤㅤSpeed:"
+SpeedBox.Parent = FlyPanel
+SpeedBox.TextXAlignment =
+    Enum.TextXAlignment.Left
+
+SpeedInput =
+    Instance.new("TextBox")
+
+SpeedInput.Size =
+    UDim2.new(0.4,0,0.9)
+
+SpeedInput.Position =
+    UDim2.new(0.55,0,0.05)
+
+SpeedInput.BackgroundColor3 =
+    Color3.fromRGB(40,40,40)
+
+SpeedInput.PlaceholderText =
+    "Enter Speed"
+
+SpeedInput.Text =
+    " " .. tostring(FlySpeed)
+
+SpeedInput.TextColor3 =
+    Color3.new(1,1,1)
+
+SpeedInput.BorderSizePixel = 0
+SpeedInput.Font =
+    Enum.Font.SourceSans
+
+SpeedInput.TextSize = 20
+SpeedInput.TextXAlignment =
+    Enum.TextXAlignment.Left
+
+SpeedInput.ClearTextOnFocus = false
+SpeedInput.Parent = SpeedBox
+
+--==================================================
+-- ENABLE
+--==================================================
+
+FlyButton =
+    Instance.new("TextButton")
+
+FlyButton.Size =
+    UDim2.new(0.9,0,0.25)
+
+FlyButton.Position =
+    UDim2.new(0.05,0,0.37)
+
+FlyButton.BackgroundColor3 =
+    Color3.fromRGB(18,118,168)
+
+FlyButton.Text = "ENABLE"
+
+FlyButton.TextColor3 =
+    Color3.new(1,1,1)
+
+FlyButton.BorderSizePixel = 0
+FlyButton.Font =
+    Enum.Font.Highway
+
+FlyButton.TextSize = 20
+FlyButton.Parent = FlyPanel
+
+FlyButton.MouseButton1Click:Connect(function()
+
+    local NewSpeed =
+        tonumber(SpeedInput.Text)
+
+    if NewSpeed then
+        FlySpeed = NewSpeed
+    end
+
+    if Flying then
+
+        stopFlying()
+        FlyButton.Text = "ENABLE"
+
+    else
+
+        startFlying()
+
+        FlyButton.Text = "Loading..."
+
+        task.wait(0.5)
+
+        if Flying then
+            FlyButton.Text = "DISABLE"
+        else
+            FlyButton.Text = "ENABLE"
+        end
+    end
+
+    SpeedInput.Text =
+        " " .. tostring(FlySpeed)
+end)
+
+SpeedInput.FocusLost:Connect(function()
+
+    local NewSpeed =
+        tonumber(SpeedInput.Text)
+
+    if NewSpeed then
+
+        FlySpeed = NewSpeed
+
+        SpeedInput.Text =
+            " " .. tostring(FlySpeed)
+    end
+end)
+
+--==================================================
+-- COMMANDS
+--==================================================
+
+local Commands = {
+
+    "-speed 100",
+    "-ws 100",
+
+    "-jumppower 100",
+    "-jp 100",
+
+    "-gravity 50",
+    "-grav 50",
+
+    "-noclip",
+    "-clip",
+
+    "-light",
+    "-unlight",
+
+    "-esp",
+    "-unesp",
+
+    "-fly",
+    "-unfly",
+
+    "-tptool",
+
+    "-shiftlock",
+    "-si",
+
+    "-unshiftlock",
+    "-unsi"
+}
+
+--==================================================
+-- EXECUTE COMMAND
+--==================================================
+
+local function ExecuteCommand(Message)
+
+    local Args =
+        string.split(Message," ")
+
+    local Command =
+        string.lower(
+            Args[1] or ""
+        )
+
+    local Value =
+        tonumber(Args[2])
+
+    -- SPEED
+    if Command == "-speed"
+    or Command == "-ws" then
+
+        local Character =
+            Player.Character
+
+        local Humanoid =
+            Character and
+            Character:FindFirstChildOfClass(
+                "Humanoid"
+            )
+
+        if Humanoid and Value then
+            Humanoid.WalkSpeed = Value
+        end
+
+    -- JUMP
+    elseif Command == "-jumppower"
+    or Command == "-jp" then
+
+        local Character =
+            Player.Character
+
+        local Humanoid =
+            Character and
+            Character:FindFirstChildOfClass(
+                "Humanoid"
+            )
+
+        if Humanoid and Value then
+
+            Humanoid.UseJumpPower = true
+            Humanoid.JumpPower = Value
+        end
+
+    -- GRAVITY
+    elseif Command == "-gravity"
+    or Command == "-grav" then
+
+        if Value then
+            workspace.Gravity = Value
+        end
+
+    -- NOCLIP
+    elseif Command == "-noclip" then
+
+        if _G.CMDNoclip then
+            _G.CMDNoclip:Disconnect()
+        end
+
+        _G.CMDNoclip =
+            RunService.Stepped:Connect(function()
+
+            local Character =
+                Player.Character
+
+            if Character then
+
+                for _,Part in ipairs(
+                    Character:GetDescendants()
+                ) do
+
+                    if Part:IsA("BasePart") then
+                        Part.CanCollide = false
+                    end
+                end
+            end
+        end)
+
+    elseif Command == "-clip" then
+
+        if _G.CMDNoclip then
+
+            _G.CMDNoclip:Disconnect()
+            _G.CMDNoclip = nil
+        end
+
+        local Character =
+            Player.Character
+
+        if Character then
+
+            for _,Part in ipairs(
+                Character:GetDescendants()
+            ) do
+
+                if Part:IsA("BasePart") then
+                    Part.CanCollide = true
+                end
+            end
+        end
+
+    -- LIGHT
+    elseif Command == "-light" then
+
+        Lighting.Brightness = 2
+        Lighting.ClockTime = 12
+        Lighting.FogEnd = 100000
+        Lighting.GlobalShadows = false
+        Lighting.Ambient =
+            Color3.new(1,1,1)
+
+    elseif Command == "-unlight" then
+
+        Lighting.Brightness = 1
+        Lighting.ClockTime = 14
+        Lighting.FogEnd = 100000
+        Lighting.GlobalShadows = true
+        Lighting.Ambient =
+            Color3.fromRGB(
+                127,127,127
+            )
+
+    -- ESP
+    elseif Command == "-esp" then
+
+        StartESP()
+
+    elseif Command == "-unesp" then
+
+        RemoveESP()
+
+    -- FLY
+    elseif Command == "-fly" then
+
+        if Value then
+
+            FlySpeed = Value
+
+            SpeedInput.Text =
+                " " .. tostring(FlySpeed)
+        end
+
+        -- يفتح القائمة فقط
+        FlyGui.Enabled = true
+        FlyPanel.Visible = true
+        FlyOpen.Visible = false
+
+    elseif Command == "-unfly" then
+
+        stopFlying()
+
+        FlyButton.Text = "ENABLE"
+
+    -- SHIFTLOCK
+    elseif Command == "-shiftlock"
+    or Command == "-si" then
+
+        ToggleShiftLock()
+
+    elseif Command == "-unshiftlock"
+    or Command == "-unsi" then
+
+        if ShiftLockConnection then
+
+            ShiftLockConnection:Disconnect()
+            ShiftLockConnection = nil
+        end
+
+        local Character =
+            Player.Character
+
+        local Humanoid =
+            Character and
+            Character:FindFirstChildOfClass(
+                "Humanoid"
+            )
+
+        if Humanoid then
+            Humanoid.AutoRotate = true
+        end
+
+    -- TP TOOL
+    elseif Command == "-tptool" then
+
+        local Backpack =
+            Player:WaitForChild("Backpack")
+
+        if Backpack:FindFirstChild("TP tool") then
+            return
+        end
+
+        local Tool =
+            Instance.new("Tool")
+
+        Tool.Name = "TP tool"
+        Tool.RequiresHandle = false
+        Tool.Parent = Backpack
+
+        Tool.Activated:Connect(function()
+
+            local Mouse =
+                Player:GetMouse()
+
+            if Mouse.Hit then
+
+                local Character =
+                    Player.Character
+
+                local Root =
+                    Character and
+                    Character:FindFirstChild(
+                        "HumanoidRootPart"
+                    )
+
+                if Root then
+
+                    Root.CFrame =
+                        CFrame.new(
+                            Mouse.Hit.Position +
+                            Vector3.new(0,3,0)
+                        )
+                end
+            end
+        end)
+    end
+end
+
+--==================================================
+-- COMMAND BUTTONS
+--==================================================
+
+for _,Text in ipairs(Commands) do
+
+    local Button =
+        Instance.new("TextButton")
+
+    Button.Size =
+        UDim2.new(1,-8,0,34)
+
+    Button.BackgroundColor3 =
+        Color3.fromRGB(35,35,35)
+
+    Button.BorderSizePixel = 1
+    Button.BorderColor3 =
+        Color3.fromRGB(70,70,70)
+
+    Button.Text = Text
+    Button.TextColor3 =
+        Color3.new(1,1,1)
+
+    Button.TextSize = 13
+    Button.Font = Enum.Font.Gotham
+    Button.Parent = Scroll
+
+    Button.MouseButton1Click:Connect(function()
+
+        CommandBox.Text = Text
+        CommandBox.Visible = true
+        CommandBox:CaptureFocus()
+    end)
+end
+
+Layout:GetPropertyChangedSignal(
+    "AbsoluteContentSize"
+):Connect(function()
+
+    Scroll.CanvasSize =
+        UDim2.new(
+            0,
+            0,
+            0,
+            Layout.AbsoluteContentSize.Y + 5
+        )
+end)
+
+--==================================================
+-- OPEN / CLOSE
+--==================================================
+
+CMD.MouseButton1Click:Connect(function()
+
+    Menu.Visible =
+        not Menu.Visible
+end)
+
+Close.MouseButton1Click:Connect(function()
+
+    Menu.Visible = false
+end)
+
+Edit.MouseButton1Click:Connect(function()
+
+    CommandBox.Visible =
+        not CommandBox.Visible
+
+    if CommandBox.Visible then
+        CommandBox:CaptureFocus()
+    end
+end)
+
+--==================================================
+-- LOCK
+--==================================================
+
+Lock.MouseButton1Click:Connect(function()
+
+    Locked = not Locked
+
+    if Locked then
+        Lock.Text = "🔒"
+    else
+        Lock.Text = "🔓"
+    end
+end)
+
+--==================================================
+-- CHAT
+--==================================================
+
+Player.Chatted:Connect(function(Message)
+
+    ExecuteCommand(Message)
+end)
+
+--==================================================
+-- COMMAND BOX
+--==================================================
+
+CommandBox.FocusLost:Connect(function(
+    EnterPressed
+)
+
+    if not EnterPressed then
+        return
+    end
+
+    local Text =
+        CommandBox.Text
+
+    if Text ~= "" then
+
+        ExecuteCommand(Text)
+
+        CommandBox.Text = ""
+    end
+end)
+
+--==================================================
+-- RESPAWN
+--==================================================
+
+Player.CharacterAdded:Connect(function()
+
+    if Flying then
+        stopFlying()
+    end
+
+    if FlyButton then
+        FlyButton.Text = "ENABLE"
+    end
+
+    if ShiftLockConnection then
+
+        ShiftLockConnection:Disconnect()
+        ShiftLockConnection = nil
+    end
+end)
