@@ -1,0 +1,732 @@
+-- LocalScript : Free Cam V2 (جوال + كمبيوتر)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+local cam = workspace.CurrentCamera
+
+------------------------------------------------ الإعدادات
+local TOGGLE_IMAGE = "rbxassetid://123793232204455"
+local LOOP = "FreeCamLoop"
+local MIN_SPEED, MAX_SPEED = 5, 500
+local ACCENT = Color3.fromRGB(90, 160, 255)
+
+local S = {
+	sens = 1,       -- حساسية الدوران
+	smooth = 3,     -- النعومة (0 = فوري ، 15 = ناعم جدا)
+	freeze = true,  -- تثبيت الشخصية أثناء الفري كام
+	tilt = true,    -- ميلان سينمائي عند الحركة الجانبية
+}
+
+------------------------------------------------ الحالة
+local mode = nil            -- nil | "free" | "view"
+local targetPlayer = nil
+local speed = 60
+local camPos = Vector3.zero
+local tYaw, tPitch, sYaw, sPitch, sRoll = 0, 0, 0, 0, 0
+local tFov, sFov, origFov = 70, 70, nil
+local velocity = Vector3.zero
+local rotating = false
+local moveTouch, lookTouch = nil, nil
+local stickVec = Vector2.zero
+local vertTouch = 0
+local bound = false
+local anchoredByUs = false
+local uiHidden = false
+local speedSet, fovSet = nil, nil
+local thumbCache = {}
+
+------------------------------------------------ أدوات مساعدة
+local function corner(obj, r)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, r or 8)
+	c.Parent = obj
+end
+
+local function isPress(i)
+	return i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch
+end
+
+-- سحب (يرجع دالة تقول هل تم السحب فعلا أو كان ضغطة فقط)
+local function makeDraggable(target, handle)
+	handle = handle or target
+	local dragInput, startPos, startMouse, moved = nil, nil, nil, false
+	handle.InputBegan:Connect(function(input)
+		if isPress(input) then
+			dragInput = (input.UserInputType == Enum.UserInputType.Touch) and input or "mouse"
+			startMouse = input.Position
+			startPos = target.Position
+			moved = false
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if not dragInput then return end
+		if (dragInput == "mouse" and input.UserInputType == Enum.UserInputType.MouseMovement) or input == dragInput then
+			local d = input.Position - startMouse
+			if d.Magnitude > 8 then moved = true end
+			if moved then
+				target.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+			end
+		end
+	end)
+	UIS.InputEnded:Connect(function(input)
+		if (dragInput == "mouse" and input.UserInputType == Enum.UserInputType.MouseButton1) or input == dragInput then
+			dragInput = nil
+		end
+	end)
+	return function() return moved end
+end
+
+local function newButton(parent, text, size, pos)
+	local b = Instance.new("TextButton")
+	b.Size = size or UDim2.new(1, -6, 0, 38)
+	if pos then b.Position = pos end
+	b.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+	b.BackgroundTransparency = 0.1
+	b.Text = text
+	b.TextColor3 = Color3.new(1, 1, 1)
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 15
+	b.Parent = parent
+	corner(b)
+	return b
+end
+
+local function newLabel(parent, text, size, pos)
+	local l = Instance.new("TextLabel")
+	l.Size = size
+	l.Position = pos or UDim2.new()
+	l.BackgroundTransparency = 1
+	l.Text = text
+	l.TextColor3 = Color3.new(1, 1, 1)
+	l.Font = Enum.Font.GothamBold
+	l.TextSize = 15
+	l.TextTruncate = Enum.TextTruncate.AtEnd
+	l.Parent = parent
+	return l
+end
+
+-- نافذة بعنوان قابل للسحب
+local function newPanel(titleText, size)
+	local f = Instance.new("Frame")
+	f.AnchorPoint = Vector2.new(0.5, 0.5)
+	f.Position = UDim2.new(0.5, 0, 0.5, 0)
+	f.Size = UDim2.new()
+	f.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+	f.BackgroundTransparency = 0.05
+	f.ClipsDescendants = true
+	f.Visible = false
+	f:SetAttribute("full", size)
+	corner(f, 12)
+	local t = newLabel(f, titleText, UDim2.new(1, 0, 0, 34))
+	t.TextSize = 18
+	t.BackgroundColor3 = Color3.new(0, 0, 0)
+	t.BackgroundTransparency = 0.5
+	makeDraggable(f, t)
+	return f, t
+end
+
+local function showPanel(f)
+	f.Size = UDim2.new()
+	f.Visible = true
+	TweenService:Create(f, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = f:GetAttribute("full")}):Play()
+end
+
+local function hidePanel(f)
+	if not f.Visible then return end
+	local t = TweenService:Create(f, TweenInfo.new(0.18), {Size = UDim2.new()})
+	t:Play()
+	t.Completed:Once(function()
+		if f.Size.X.Offset == 0 then f.Visible = false end
+	end)
+end
+
+local function setControls(enabled)
+	pcall(function()
+		local module = player.PlayerScripts:FindFirstChild("PlayerModule")
+		if not module then return end
+		local controls = require(module):GetControls()
+		if enabled then controls:Enable() else controls:Disable() end
+	end)
+end
+
+local function setFreeze(on)
+	local ch = player.Character
+	local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	if on and mode == "free" then
+		if not hrp.Anchored then
+			hrp.Anchored = true
+			anchoredByUs = true
+		end
+	elseif anchoredByUs then
+		hrp.Anchored = false
+		anchoredByUs = false
+	end
+end
+
+------------------------------------------------ الواجهة
+local gui = Instance.new("ScreenGui")
+gui.Name = "FreeCamGui"
+gui.ResetOnSpawn = false
+gui.DisplayOrder = 10
+gui.Parent = player:WaitForChild("PlayerGui")
+
+-- زر فري كام
+local toggleBtn = Instance.new("ImageButton")
+toggleBtn.Size = UDim2.new(0, 60, 0, 60)
+toggleBtn.Position = UDim2.new(0.02, 0, 0.55, 0)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+toggleBtn.BackgroundTransparency = 0.3
+toggleBtn.Image = TOGGLE_IMAGE
+toggleBtn.ZIndex = 10
+toggleBtn.Parent = gui
+corner(toggleBtn, 12)
+local toggleDragged = makeDraggable(toggleBtn)
+
+-- زر استرجاع الواجهة (يظهر عند إخفائها)
+local showBtn = newButton(gui, "👁", UDim2.new(0, 44, 0, 30), UDim2.new(0.5, -22, 0, 6))
+showBtn.BackgroundTransparency = 0.7
+showBtn.Visible = false
+
+-- القائمة الرئيسية
+local mainPanel = newPanel("Free Cam", UDim2.new(0, 230, 0, 204))
+mainPanel.Parent = gui
+local btnFree = newButton(mainPanel, "فري كام", UDim2.new(1, -16, 0, 44), UDim2.new(0, 8, 0, 44))
+local btnView = newButton(mainPanel, "مشاهدة لاعب", UDim2.new(1, -16, 0, 44), UDim2.new(0, 8, 0, 96))
+local btnSet = newButton(mainPanel, "الإعدادات", UDim2.new(1, -16, 0, 44), UDim2.new(0, 8, 0, 148))
+
+-- قائمة اللاعبين
+local listPanel, listTitle = newPanel("اختر لاعب", UDim2.new(0, 280, 0, 340))
+listPanel.Parent = gui
+local backBtn = newButton(listPanel, "رجوع", UDim2.new(0, 70, 0, 32), UDim2.new(0, 8, 0, 40))
+local searchBox = Instance.new("TextBox")
+searchBox.Size = UDim2.new(1, -94, 0, 32)
+searchBox.Position = UDim2.new(0, 86, 0, 40)
+searchBox.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+searchBox.PlaceholderText = "بحث..."
+searchBox.Text = ""
+searchBox.TextColor3 = Color3.new(1, 1, 1)
+searchBox.PlaceholderColor3 = Color3.fromRGB(160, 160, 160)
+searchBox.Font = Enum.Font.GothamBold
+searchBox.TextSize = 14
+searchBox.ClearTextOnFocus = false
+searchBox.Parent = listPanel
+corner(searchBox)
+local listScroll = Instance.new("ScrollingFrame")
+listScroll.Size = UDim2.new(1, -16, 1, -88)
+listScroll.Position = UDim2.new(0, 8, 0, 80)
+listScroll.BackgroundTransparency = 1
+listScroll.ScrollBarThickness = 4
+listScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+listScroll.CanvasSize = UDim2.new()
+listScroll.Parent = listPanel
+local ll = Instance.new("UIListLayout")
+ll.Padding = UDim.new(0, 6)
+ll.Parent = listScroll
+
+-- شريط التحكم العلوي (يتمدد حسب الأزرار الظاهرة)
+local hud = Instance.new("Frame")
+hud.AutomaticSize = Enum.AutomaticSize.X
+hud.Size = UDim2.new(0, 0, 0, 44)
+hud.AnchorPoint = Vector2.new(0.5, 0)
+hud.Position = UDim2.new(0.5, 0, 0, 8)
+hud.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+hud.BackgroundTransparency = 0.2
+hud.Visible = false
+hud.Parent = gui
+corner(hud, 10)
+local hl = Instance.new("UIListLayout")
+hl.FillDirection = Enum.FillDirection.Horizontal
+hl.VerticalAlignment = Enum.VerticalAlignment.Center
+hl.Padding = UDim.new(0, 4)
+hl.Parent = hud
+local hp = Instance.new("UIPadding")
+hp.PaddingLeft = UDim.new(0, 4)
+hp.PaddingRight = UDim.new(0, 4)
+hp.Parent = hud
+local prevBtn = newButton(hud, "◀", UDim2.new(0, 36, 0, 36))
+local hudLabel = newLabel(hud, "", UDim2.new(0, 130, 0, 36))
+local nextBtn = newButton(hud, "▶", UDim2.new(0, 36, 0, 36))
+local camBtn = newButton(hud, "🎥", UDim2.new(0, 36, 0, 36))
+local gearBtn = newButton(hud, "⚙", UDim2.new(0, 36, 0, 36))
+local eyeBtn = newButton(hud, "👁", UDim2.new(0, 36, 0, 36))
+local exitBtn = newButton(hud, "خروج", UDim2.new(0, 60, 0, 36))
+exitBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+
+local function setHud(kind, text)
+	hud.Visible = not uiHidden
+	local isView = kind == "view"
+	prevBtn.Visible = isView
+	nextBtn.Visible = isView
+	camBtn.Visible = isView
+	hudLabel.Text = text
+end
+
+-- عصا الحركة (جوال)
+local joyBase = Instance.new("Frame")
+joyBase.Size = UDim2.new(0, 120, 0, 120)
+joyBase.AnchorPoint = Vector2.new(0, 1)
+joyBase.Position = UDim2.new(0, 30, 1, -30)
+joyBase.BackgroundColor3 = Color3.new(1, 1, 1)
+joyBase.BackgroundTransparency = 0.8
+joyBase.Active = true
+joyBase.Visible = false
+joyBase.Parent = gui
+corner(joyBase, 60)
+local knob = Instance.new("Frame")
+knob.Size = UDim2.new(0, 50, 0, 50)
+knob.Position = UDim2.new(0.5, -25, 0.5, -25)
+knob.BackgroundColor3 = Color3.new(1, 1, 1)
+knob.BackgroundTransparency = 0.3
+knob.Parent = joyBase
+corner(knob, 25)
+
+-- أزرار جوال: فوق / تحت / السرعة
+local touchCtl = Instance.new("Frame")
+touchCtl.Size = UDim2.new(0, 130, 0, 175)
+touchCtl.AnchorPoint = Vector2.new(1, 1)
+touchCtl.Position = UDim2.new(1, -20, 1, -30)
+touchCtl.BackgroundTransparency = 1
+touchCtl.Visible = false
+touchCtl.Parent = gui
+local upBtn = newButton(touchCtl, "▲", UDim2.new(0, 56, 0, 56), UDim2.new(0, 37, 0, 0))
+local downBtn = newButton(touchCtl, "▼", UDim2.new(0, 56, 0, 56), UDim2.new(0, 37, 0, 62))
+local minusBtn = newButton(touchCtl, "-", UDim2.new(0, 38, 0, 40), UDim2.new(0, 0, 0, 132))
+local speedLabel = newLabel(touchCtl, "", UDim2.new(0, 46, 0, 40), UDim2.new(0, 42, 0, 132))
+local plusBtn = newButton(touchCtl, "+", UDim2.new(0, 38, 0, 40), UDim2.new(0, 92, 0, 132))
+
+local function setSpeed(v)
+	speed = math.clamp(v, MIN_SPEED, MAX_SPEED)
+	speedLabel.Text = tostring(math.floor(speed))
+	if speedSet then speedSet(speed, true) end
+end
+
+local function holdButton(b, val)
+	b.InputBegan:Connect(function(i)
+		if isPress(i) then vertTouch = val end
+	end)
+	b.InputEnded:Connect(function(i)
+		if isPress(i) and vertTouch == val then vertTouch = 0 end
+	end)
+end
+holdButton(upBtn, 1)
+holdButton(downBtn, -1)
+minusBtn.MouseButton1Click:Connect(function() setSpeed(speed * 0.8) end)
+plusBtn.MouseButton1Click:Connect(function() setSpeed(speed * 1.25) end)
+
+------------------------------------------------ نافذة الإعدادات
+local settingsPanel = newPanel("الإعدادات", UDim2.new(0, 290, 0, 384))
+settingsPanel.Parent = gui
+
+local function makeSlider(text, min, max, init, y, fmt, onChange)
+	local holder = Instance.new("Frame")
+	holder.Size = UDim2.new(1, -24, 0, 44)
+	holder.Position = UDim2.new(0, 12, 0, y)
+	holder.BackgroundTransparency = 1
+	holder.Parent = settingsPanel
+	local lab = newLabel(holder, "", UDim2.new(1, 0, 0, 20))
+	lab.TextSize = 14
+	local bar = Instance.new("Frame")
+	bar.Size = UDim2.new(1, 0, 0, 8)
+	bar.Position = UDim2.new(0, 0, 0, 30)
+	bar.BackgroundColor3 = Color3.fromRGB(60, 60, 85)
+	bar.Active = true
+	bar.Parent = holder
+	corner(bar, 4)
+	local fill = Instance.new("Frame")
+	fill.BackgroundColor3 = ACCENT
+	fill.Parent = bar
+	corner(fill, 4)
+	local knobS = Instance.new("Frame")
+	knobS.Size = UDim2.new(0, 18, 0, 18)
+	knobS.BackgroundColor3 = Color3.new(1, 1, 1)
+	knobS.Parent = bar
+	corner(knobS, 9)
+
+	local function set(v, silent)
+		v = math.clamp(v, min, max)
+		local a = (v - min) / (max - min)
+		fill.Size = UDim2.new(a, 0, 1, 0)
+		knobS.Position = UDim2.new(a, -9, 0.5, -9)
+		lab.Text = text .. " : " .. fmt(v)
+		if not silent then onChange(v) end
+	end
+
+	local dragInput
+	local function fromX(x)
+		set(min + (max - min) * math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1))
+	end
+	bar.InputBegan:Connect(function(i)
+		if isPress(i) then
+			dragInput = (i.UserInputType == Enum.UserInputType.Touch) and i or "mouse"
+			fromX(i.Position.X)
+		end
+	end)
+	UIS.InputChanged:Connect(function(i)
+		if dragInput and ((dragInput == "mouse" and i.UserInputType == Enum.UserInputType.MouseMovement) or i == dragInput) then
+			fromX(i.Position.X)
+		end
+	end)
+	UIS.InputEnded:Connect(function(i)
+		if (dragInput == "mouse" and i.UserInputType == Enum.UserInputType.MouseButton1) or i == dragInput then
+			dragInput = nil
+		end
+	end)
+	set(init, true)
+	return set
+end
+
+local function makeToggle(text, init, y, onChange)
+	local b = newButton(settingsPanel, "", UDim2.new(1, -24, 0, 36), UDim2.new(0, 12, 0, y))
+	local on = init
+	local function paint()
+		b.Text = text .. " : " .. (on and "ON" or "OFF")
+		b.BackgroundColor3 = on and Color3.fromRGB(40, 130, 60) or Color3.fromRGB(120, 40, 40)
+	end
+	paint()
+	b.MouseButton1Click:Connect(function()
+		on = not on
+		paint()
+		onChange(on)
+	end)
+end
+
+local fmtInt = function(v) return tostring(math.floor(v + 0.5)) end
+local fmtDec = function(v) return string.format("%.1f", v) end
+
+speedSet = makeSlider("السرعة", MIN_SPEED, MAX_SPEED, speed, 40, fmtInt, function(v) setSpeed(v) end)
+makeSlider("الحساسية", 0.3, 3, S.sens, 88, fmtDec, function(v) S.sens = v end)
+makeSlider("النعومة", 0, 15, S.smooth, 136, fmtInt, function(v) S.smooth = v end)
+fovSet = makeSlider("الزوم (FOV)", 15, 120, 70, 184, fmtInt, function(v) tFov = v end)
+makeToggle("تثبيت الشخصية", S.freeze, 238, function(on)
+	S.freeze = on
+	setFreeze(on)
+end)
+makeToggle("ميلان سينمائي", S.tilt, 282, function(on) S.tilt = on end)
+local closeSet = newButton(settingsPanel, "إغلاق", UDim2.new(1, -24, 0, 38), UDim2.new(0, 12, 0, 330))
+setSpeed(speed)
+
+------------------------------------------------ التحكم
+local function resetStick()
+	moveTouch = nil
+	stickVec = Vector2.zero
+	knob.Position = UDim2.new(0.5, -25, 0.5, -25)
+end
+
+local function unbindLoop()
+	if bound then
+		RunService:UnbindFromRenderStep(LOOP)
+		bound = false
+	end
+end
+
+local function bindLoop(fn)
+	unbindLoop()
+	RunService:BindToRenderStep(LOOP, Enum.RenderPriority.Camera.Value + 1, fn)
+	bound = true
+end
+
+local function applyUiHidden(h)
+	uiHidden = h
+	toggleBtn.Visible = not h
+	showBtn.Visible = h
+	hud.Visible = (not h) and mode ~= nil
+	local touchUi = (not h) and mode == "free" and UIS.TouchEnabled
+	touchCtl.Visible = touchUi
+	joyBase.Visible = touchUi
+	if h then
+		hidePanel(mainPanel)
+		hidePanel(listPanel)
+		hidePanel(settingsPanel)
+	end
+end
+
+local function stopAll()
+	unbindLoop()
+	local was = mode
+	setFreeze(false)
+	mode = nil
+	targetPlayer = nil
+	rotating = false
+	lookTouch = nil
+	vertTouch = 0
+	resetStick()
+	UIS.MouseBehavior = Enum.MouseBehavior.Default
+	applyUiHidden(false)
+	if was then
+		setControls(true)
+		cam.CameraType = Enum.CameraType.Custom
+		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if hum then cam.CameraSubject = hum end
+		if origFov then cam.FieldOfView = origFov end
+	end
+	origFov = nil
+end
+
+local function startFree()
+	stopAll()
+	mode = "free"
+	origFov = cam.FieldOfView
+	local pitch, yaw = cam.CFrame:ToOrientation()
+	camPos = cam.CFrame.Position
+	tYaw, tPitch, sYaw, sPitch, sRoll = yaw, pitch, yaw, pitch, 0
+	tFov, sFov = cam.FieldOfView, cam.FieldOfView
+	if fovSet then fovSet(tFov, true) end
+	velocity = Vector3.zero
+	cam.CameraType = Enum.CameraType.Scriptable
+	setControls(false)
+	setFreeze(S.freeze)
+	setHud("free", "Free Cam")
+	applyUiHidden(false)
+
+	bindLoop(function(dt)
+		local rotRate = 40 / (S.smooth + 1)
+		local moveRate = 24 / (S.smooth + 1)
+		local a = math.min(1, dt * rotRate)
+		sYaw = sYaw + (tYaw - sYaw) * a
+		sPitch = sPitch + (tPitch - sPitch) * a
+		local rot = CFrame.fromOrientation(sPitch, sYaw, 0)
+
+		local mx, mz, my = stickVec.X, stickVec.Y, vertTouch
+		local boost = 1
+		if not UIS:GetFocusedTextBox() then
+			if UIS:IsKeyDown(Enum.KeyCode.W) then mz -= 1 end
+			if UIS:IsKeyDown(Enum.KeyCode.S) then mz += 1 end
+			if UIS:IsKeyDown(Enum.KeyCode.A) then mx -= 1 end
+			if UIS:IsKeyDown(Enum.KeyCode.D) then mx += 1 end
+			if UIS:IsKeyDown(Enum.KeyCode.E) or UIS:IsKeyDown(Enum.KeyCode.Space) then my += 1 end
+			if UIS:IsKeyDown(Enum.KeyCode.Q) then my -= 1 end
+			if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then boost = 3 end
+			if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then boost = 0.3 end
+			-- زوم بالمفاتيح
+			local z = 0
+			if UIS:IsKeyDown(Enum.KeyCode.Z) then z -= 1 end
+			if UIS:IsKeyDown(Enum.KeyCode.X) then z += 1 end
+			if z ~= 0 then
+				tFov = math.clamp(tFov + z * 45 * dt, 15, 120)
+				if fovSet then fovSet(tFov, true) end
+			end
+		end
+		sFov = sFov + (tFov - sFov) * math.min(1, dt * 8)
+		cam.FieldOfView = sFov
+
+		local dir = rot:VectorToWorldSpace(Vector3.new(mx, 0, mz)) + Vector3.new(0, my, 0)
+		if dir.Magnitude > 1 then dir = dir.Unit end
+		velocity = velocity:Lerp(dir * speed * boost, math.min(1, dt * moveRate))
+		camPos = camPos + velocity * dt
+
+		local roll = 0
+		if S.tilt then
+			local lv = rot:VectorToObjectSpace(velocity)
+			roll = -math.clamp(lv.X / math.max(speed, 1), -1.5, 1.5) * 0.05
+		end
+		sRoll = sRoll + (roll - sRoll) * math.min(1, dt * 6)
+
+		cam.CFrame = CFrame.new(camPos) * rot * CFrame.Angles(0, 0, sRoll)
+	end)
+end
+
+local function startView(p)
+	stopAll()
+	mode = "view"
+	targetPlayer = p
+	cam.CameraType = Enum.CameraType.Custom
+	setHud("view", p.DisplayName)
+	bindLoop(function()
+		if not targetPlayer or not targetPlayer.Parent then
+			stopAll()
+			return
+		end
+		local ch = targetPlayer.Character
+		local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+		if hum and cam.CameraSubject ~= hum then cam.CameraSubject = hum end
+		if cam.CameraType ~= Enum.CameraType.Custom then cam.CameraType = Enum.CameraType.Custom end
+	end)
+end
+
+local function cycle(dir)
+	local others = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= player then table.insert(others, p) end
+	end
+	if #others == 0 then return end
+	local idx = table.find(others, targetPlayer) or 0
+	idx = (idx - 1 + dir) % #others + 1
+	startView(others[idx])
+end
+
+------------------------------------------------ قائمة اللاعبين
+local function loadThumb(img, userId)
+	if thumbCache[userId] then
+		img.Image = thumbCache[userId]
+		return
+	end
+	task.spawn(function()
+		local ok, content = pcall(Players.GetUserThumbnailAsync, Players, userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+		if ok then
+			thumbCache[userId] = content
+			if img.Parent then img.Image = content end
+		end
+	end)
+end
+
+local function refreshList()
+	for _, c in ipairs(listScroll:GetChildren()) do
+		if c:IsA("TextButton") then c:Destroy() end
+	end
+	local q = searchBox.Text:lower()
+	local count = 0
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= player then
+			count += 1
+			if q == "" or p.Name:lower():find(q, 1, true) or p.DisplayName:lower():find(q, 1, true) then
+				local b = newButton(listScroll, "", UDim2.new(1, -6, 0, 46))
+				local img = Instance.new("ImageLabel")
+				img.Size = UDim2.new(0, 36, 0, 36)
+				img.Position = UDim2.new(0, 6, 0.5, -18)
+				img.BackgroundColor3 = Color3.fromRGB(60, 60, 85)
+				img.Parent = b
+				corner(img, 18)
+				loadThumb(img, p.UserId)
+				local nameLabel = newLabel(b, p.DisplayName .. "\n@" .. p.Name, UDim2.new(1, -52, 1, 0), UDim2.new(0, 48, 0, 0))
+				nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+				nameLabel.TextSize = 14
+				b.MouseButton1Click:Connect(function()
+					hidePanel(listPanel)
+					startView(p)
+				end)
+			end
+		end
+	end
+	listTitle.Text = "اختر لاعب (" .. count .. ")"
+end
+searchBox:GetPropertyChangedSignal("Text"):Connect(refreshList)
+Players.PlayerAdded:Connect(function()
+	if listPanel.Visible then refreshList() end
+end)
+Players.PlayerRemoving:Connect(function(p)
+	if mode == "view" and targetPlayer == p then stopAll() end
+	task.defer(function()
+		if listPanel.Visible then refreshList() end
+	end)
+end)
+
+player.CharacterAdded:Connect(function()
+	if mode == "free" then
+		task.wait(0.4)
+		if mode == "free" then
+			anchoredByUs = false
+			setControls(false)
+			setFreeze(S.freeze)
+		end
+	end
+end)
+
+------------------------------------------------ الأزرار
+toggleBtn.MouseButton1Click:Connect(function()
+	if toggleDragged() then return end
+	if mainPanel.Visible or listPanel.Visible or settingsPanel.Visible then
+		hidePanel(mainPanel)
+		hidePanel(listPanel)
+		hidePanel(settingsPanel)
+	else
+		showPanel(mainPanel)
+	end
+end)
+
+btnFree.MouseButton1Click:Connect(function()
+	hidePanel(mainPanel)
+	startFree()
+end)
+
+btnView.MouseButton1Click:Connect(function()
+	hidePanel(mainPanel)
+	refreshList()
+	showPanel(listPanel)
+end)
+
+btnSet.MouseButton1Click:Connect(function()
+	hidePanel(mainPanel)
+	showPanel(settingsPanel)
+end)
+
+backBtn.MouseButton1Click:Connect(function()
+	hidePanel(listPanel)
+	showPanel(mainPanel)
+end)
+
+closeSet.MouseButton1Click:Connect(function()
+	hidePanel(settingsPanel)
+	if mode == nil then showPanel(mainPanel) end
+end)
+
+gearBtn.MouseButton1Click:Connect(function()
+	if settingsPanel.Visible then hidePanel(settingsPanel) else showPanel(settingsPanel) end
+end)
+
+eyeBtn.MouseButton1Click:Connect(function() applyUiHidden(true) end)
+showBtn.MouseButton1Click:Connect(function() applyUiHidden(false) end)
+camBtn.MouseButton1Click:Connect(startFree)  -- من لقطة اللاعب الحالية إلى كاميرا حرة
+prevBtn.MouseButton1Click:Connect(function() cycle(-1) end)
+nextBtn.MouseButton1Click:Connect(function() cycle(1) end)
+exitBtn.MouseButton1Click:Connect(stopAll)
+
+------------------------------------------------ المدخلات (ماوس + لمس + كيبورد)
+joyBase.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch and not moveTouch then
+		moveTouch = input
+	end
+end)
+
+UIS.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	-- F : تشغيل / إيقاف الفري كام
+	if input.KeyCode == Enum.KeyCode.F then
+		if mode == "free" then stopAll() else startFree() end
+		return
+	end
+	if mode == "view" then
+		if input.KeyCode == Enum.KeyCode.Left then cycle(-1)
+		elseif input.KeyCode == Enum.KeyCode.Right then cycle(1) end
+		return
+	end
+	if mode ~= "free" then return end
+	if input.UserInputType == Enum.UserInputType.MouseButton2 then
+		rotating = true
+		UIS.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+	elseif input.UserInputType == Enum.UserInputType.Touch and not lookTouch and input ~= moveTouch then
+		lookTouch = input
+	end
+end)
+
+UIS.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton2 then
+		rotating = false
+		if mode == "free" then UIS.MouseBehavior = Enum.MouseBehavior.Default end
+	elseif input == lookTouch then
+		lookTouch = nil
+	elseif input == moveTouch then
+		resetStick()
+	end
+end)
+
+UIS.InputChanged:Connect(function(input, gp)
+	if mode ~= "free" then return end
+	if input.UserInputType == Enum.UserInputType.MouseMovement and rotating then
+		tYaw = tYaw - input.Delta.X * 0.0035 * S.sens
+		tPitch = math.clamp(tPitch - input.Delta.Y * 0.0035 * S.sens, -1.5, 1.5)
+	elseif input.UserInputType == Enum.UserInputType.MouseWheel and not gp then
+		setSpeed(speed * (1 + 0.15 * input.Position.Z))
+	elseif input == lookTouch then
+		tYaw = tYaw - input.Delta.X * 0.006 * S.sens
+		tPitch = math.clamp(tPitch - input.Delta.Y * 0.006 * S.sens, -1.5, 1.5)
+	elseif input == moveTouch then
+		local center = joyBase.AbsolutePosition + joyBase.AbsoluteSize / 2
+		local off = (Vector2.new(input.Position.X, input.Position.Y) - center) / (joyBase.AbsoluteSize.X / 2)
+		if off.Magnitude > 1 then off = off.Unit end
+		stickVec = off
+		knob.Position = UDim2.new(0.5, off.X * 35 - 25, 0.5, off.Y * 35 - 25)
+	end
+end)
