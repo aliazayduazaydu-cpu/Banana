@@ -1,79 +1,299 @@
-سكن مطور
-local Event = game:GetService("ReplicatedStorage").Remotes.AvatarEditorOutfitCodes
-Event:InvokeServer(
-    "Load",
-    "BH-AE-5bfe996ffbfd4f6b9beb4193debad7a7"
-)
-صور زر فتح و غلق 
-5607058253
-خلفيه قائمة
-128472281255983
-اسم ملون ويكون ب نضام toggle
-while true do
-local Event = game:GetService("ReplicatedStorage").RE["1RPNam1eColo1r"]
-Event:FireServer(
-    "PickingRPNameColor",
-    Color3.fromHSV(math.random(), 1, 1)
-)
-task.wait()
+-- LocalScript
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local RS = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+
+------------------------------------------------ الإعدادات
+local OUTFIT_CODE = "BH-AE-5bfe996ffbfd4f6b9beb4193debad7a7"
+local TOGGLE_IMAGE = "rbxassetid://5607058253"
+local MENU_BG = "rbxassetid://128472281255983"
+
+local LOCATIONS = {
+	{-474.224731, 3.32739687, 302.890289},
+	{-26.0133018, 6.07317829, 46.5223656},
+	{31.0447731, 3.52552581, -29.0641422},
+	{-589.151672, 141.694931, -59.9341316},
+	{-254.779984, 3.61832952, 96.0464096},
+	{-60.1611595, 2.78161621, -30.5991096},
+	{-242.274521, 3.21997261, 986.432922},
+	{-265.170654, 30.5523224, -190.429489},
+	{-217.643646, 6.45371819, -98.5990906},
+	{-187.339355, 3.51670265, 96.4052734},
+	{-26.2870979, 4.5320816, -15.4751263},
+	{-297.884399, 3.45549202, 258.001038},
+	{-394.843201, 3.63208628, 155.949997},
+	{-195.286148, 3.53208065, 302.084229},
+	{-3.37866783, 4.13210297, 236.221283},
+	{290.406555, 4.53207779, 94.2343674},
+	{-545.747925, 33.6251183, -120.899094},
+	{132.194839, 7.12552357, 281.672852},
+	{-191.147751, 19.8320866, 293.066101},
+	{-341.305634, 6.61834145, 30.9314079},
+	{-72.4630051, 3.63209152, -104.831589},
+	{-515.656677, 4.46444607, 68.0858917},
+	{-293.423462, 3.52552581, 212.211075},
+	{-357.736816, 7.6340971, -3.83161139},
+	{-1.47197592, 16.5482845, 106.221031},
+	{2.19092846, 23.471035, 243.100906},
+	{-0.562893748, 3.63208008, -101.814789},
+	{141.487106, 3.83538628, -1470.90027},
+	{-96.3403702, 3.65466666, 242.333405},
+	{186.942871, 4.7301054, 196.045715},
+	{-128.431412, 2.74975395, -108.578522},
+	{-243.057922, 26.622858, -113.816589},
+	{1028.66016, 4.30674744, -54.495533},
+	{360.119812, 65.8304062, -497.617767},
+	{453.788757, 4.93659163, -15.8985481},
+	{196.988617, 3.53211069, -113.49559},
+	{251.273209, 23.6120491, -189.292999},
+	{-383.859253, 3.13208008, 1323.66223},
+	{-476.268677, 3.32918453, 436.258362},
+	{61.0221672, 4.13208008, 694.922546},
+	{239.022171, 2.8815918, 825.043762},
+	{414.022156, 34.3067474, 479.664734},
+	{-103.984688, -51.1679306, 238.868164},
+	{-59.6335411, -50.9804497, 220.56369},
+	{-174.656662, 36.464447, 112.085892},
+	{-159.364655, 3.52322197, 6.08588839},
+	{-495.656677, 4.46444607, 15.0858879},
+	{110.919777, 3.53207684, 145.228958},
+	{60.9197807, 4.03211975, 205.228958},
+	{267.9198, 5.03211975, 64.2289658},
+	{61.919796, 2.03211975, -142.771042},
+	{64.9197845, 3.52552581, -55.7710381},
+	{-218.080215, 0.740306437, 694.228943},
+	{-143.080215, 4.03211975, 609.228943},
+	{-248.080215, 4.03211975, 292.228943},
+	{-3.08021259, -1.96788025, 155.228958},
+	{55.9197884, 34.1570816, 395.228943},
+}
+
+------------------------------------------------ أدوات مساعدة
+local function makeDraggable(frame)
+	local dragging, startPos, startInput
+	frame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			startInput = input.Position
+			startPos = frame.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			end)
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local d = input.Position - startInput
+			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+		end
+	end)
 end
-انتقال الى ذي اماكن وراه بعض ب زر واحد و تقدر تختار سوي انتقال مياشر او طيران لهن و سرعه طيران لهن
--474.224731, 3.32739687, 302.890289, -1, 0, 0, 0, 1, 0, 0, 0, -1
--26.0133018, 6.07317829, 46.5223656, -1, 0, 0, 0, 1, 0, 0, 0, -1
-31.0447731, 3.52552581, -29.0641422, -1, 0, 0, 0, 1, 0, 0, 0, -131.0447731, 3.52552581, -29.0641422, -1, 0, 0, 0, 1, 0, 0, 0, -1
--589.151672, 141.694931, -59.9341316, -1, 0, 0, 0, 1, 0, 0, 0, -1
--254.779984, 3.61832952, 96.0464096, -1, 0, 0, 0, 1, 0, 0, 0, -1
--60.1611595, 2.78161621, -30.5991096, -1, 0, 0, 0, 1, 0, 0, 0, -1
--254.779984, 3.61832952, 96.0464096, -1, 0, 0, 0, 1, 0, 0, 0, -1
--242.274521, 3.21997261, 986.432922, -1, 0, 0, 0, 1, 0, 0, 0, -1
--242.274521, 3.21997261, 986.432922, -1, 0, 0, 0, 1, 0, 0, 0, -1
--265.170654, 30.5523224, -190.429489, -1, 0, 0, 0, 1, 0, 0, 0, -1
--217.643646, 6.45371819, -98.5990906, -1, 0, 0, 0, 1, 0, 0, 0, -1
--187.339355, 3.51670265, 96.4052734, -1, 0, 0, 0, 1, 0, 0, 0, -1
--26.2870979, 4.5320816, -15.4751263, -1, 0, 0, 0, 1, 0, 0, 0, -1
--297.884399, 3.45549202, 258.001038, -1, 0, 0, 0, 1, 0, 0, 0, -1
--394.843201, 3.63208628, 155.949997, -1, 0, 0, 0, 1, 0, 0, 0, -1
--195.286148, 3.53208065, 302.084229, -1, 0, 0, 0, 1, 0, 0, 0, -1
--3.37866783, 4.13210297, 236.221283, -1, 0, 0, 0, 1, 0, 0, 0, -1
-290.406555, 4.53207779, 94.2343674, -1, 0, 0, 0, 1, 0, 0, 0, -1
--545.747925, 33.6251183, -120.899094, -1, 0, 0, 0, 1, 0, 0, 0, -1
-132.194839, 7.12552357, 281.672852, -1, 0, 0, 0, 1, 0, 0, 0, -1
--191.147751, 19.8320866, 293.066101, -1, 0, 0, 0, 1, 0, 0, 0, -1
--341.305634, 6.61834145, 30.9314079, -1, 0, 0, 0, 1, 0, 0, 0, -1
--72.4630051, 3.63209152, -104.831589, -1, 0, 0, 0, 1, 0, 0, 0, -1
--515.656677, 4.46444607, 68.0858917, -1, 0, 0, 0, 1, 0, 0, 0, -1
--293.423462, 3.52552581, 212.211075, -1, 0, 0, 0, 1, 0, 0, 0, -1
--357.736816, 7.6340971, -3.83161139, -1, 0, 0, 0, 1, 0, 0, 0, -1
--1.47197592, 16.5482845, 106.221031, -1, 0, 0, 0, 1, 0, 0, 0, -1
-2.19092846, 23.471035, 243.100906, -1, 0, 0, 0, 1, 0, 0, 0, -1
--0.562893748, 3.63208008, -101.814789, -1, 0, 0, 0, 1, 0, 0, 0, -1
-141.487106, 3.83538628, -1470.90027, -1, 0, 0, 0, 1, 0, 0, 0, -1
--96.3403702, 3.65466666, 242.333405, -1, 0, 0, 0, 1, 0, 0, 0, -1
-186.942871, 4.7301054, 196.045715, -1, 0, 0, 0, 1, 0, 0, 0, -1
--128.431412, 2.74975395, -108.578522, -0.499959469, 0, 0.866048813, 0, 1, 0, -0.866048813, 0, -0.499959469
--243.057922, 26.622858, -113.816589, -1, 0, 0, 0, 1, 0, 0, 0, -1
-1028.66016, 4.30674744, -54.495533, -1, 0, 0, 0, 1, 0, 0, 0, -1
-360.119812, 65.8304062, -497.617767, -1, 0, 0, 0, 1, 0, 0, 0, -1
-453.788757, 4.93659163, -15.8985481, -1, 0, 0, 0, 1, 0, 0, 0, -1
-196.988617, 3.53211069, -113.49559, -1, 0, 0, 0, 1, 0, 0, 0, -1
-251.273209, 23.6120491, -189.292999, -1, 0, 0, 0, 1, 0, 0, 0, -1
--383.859253, 3.13208008, 1323.66223, -1.1920929e-07, -0, -1.00000012, 0, 1, -0, 1.00000012, 0, -1.1920929e-07
--476.268677, 3.32918453, 436.258362, -1.1920929e-07, -0, -1.00000012, 0, 1, -0, 1.00000012, 0, -1.1920929e-07
-61.0221672, 4.13208008, 694.922546, -1.1920929e-07, -0, -1.00000012, 0, 1, -0, 1.00000012, 0, -1.1920929e-07
-239.022171, 2.8815918, 825.043762, -1.1920929e-07, -0, -1.00000012, 0, 1, -0, 1.00000012, 0, -1.1920929e-07
-414.022156, 34.3067474, 479.664734, -1.1920929e-07, -0, -1.00000012, 0, 1, -0, 1.00000012, 0, -1.1920929e-07
--103.984688, -51.1679306, 238.868164, -1, 0, 0, 0, 1, 0, 0, 0, -1
--59.6335411, -50.9804497, 220.56369, -1, 0, 0, 0, 1, 0, 0, 0, -1
--174.656662, 36.464447, 112.085892, -1, 0, 0, 0, 1, 0, 0, 0, -1
--159.364655, 3.52322197, 6.08588839, -1, 0, 0, 0, 1, 0, 0, 0, -1
--495.656677, 4.46444607, 15.0858879, -1, 0, 0, 0, 1, 0, 0, 0, -1
-110.919777, 3.53207684, 145.228958, -1, 0, 0, 0, 1, 0, 0, 0, -1
-60.9197807, 4.03211975, 205.228958, -1, 0, 0, 0, 1, 0, 0, 0, -1
-267.9198, 5.03211975, 64.2289658, -1, 0, 0, 0, 1, 0, 0, 0, -1
-61.919796, 2.03211975, -142.771042, -1, 0, 0, 0, 1, 0, 0, 0, -1
-64.9197845, 3.52552581, -55.7710381, -1, 0, 0, 0, 1, 0, 0, 0, -1
--218.080215, 0.740306437, 694.228943, -1, 0, 0, 0, 1, 0, 0, 0, -1
--143.080215, 4.03211975, 609.228943, -1, 0, 0, 0, 1, 0, 0, 0, -1
--248.080215, 4.03211975, 292.228943, -1, 0, 0, 0, 1, 0, 0, 0, -1
--3.08021259, -1.96788025, 155.228958, -1, 0, 0, 0, 1, 0, 0, 0, -1
-55.9197884, 34.1570816, 395.228943, -1, 0, 0, 0, 1, 0, 0, 0, -1
+
+local function corner(obj, r)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, r or 8)
+	c.Parent = obj
+end
+
+------------------------------------------------ الواجهة
+local gui = Instance.new("ScreenGui")
+gui.Name = "MyMenu"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local toggleBtn = Instance.new("ImageButton")
+toggleBtn.Size = UDim2.new(0, 60, 0, 60)
+toggleBtn.Position = UDim2.new(0.02, 0, 0.4, 0)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+toggleBtn.BackgroundTransparency = 0.3
+toggleBtn.Image = TOGGLE_IMAGE
+toggleBtn.ZIndex = 10
+toggleBtn.Parent = gui
+corner(toggleBtn, 12)
+makeDraggable(toggleBtn)
+
+local FULL = UDim2.new(0, 300, 0, 340)
+local menu = Instance.new("ImageLabel")
+menu.Size = FULL
+menu.Position = UDim2.new(0.5, -150, 0.5, -170)
+menu.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+menu.Image = MENU_BG
+menu.ScaleType = Enum.ScaleType.Crop
+menu.ClipsDescendants = true
+menu.Visible = false
+menu.Parent = gui
+corner(menu, 12)
+makeDraggable(menu)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 34)
+title.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+title.BackgroundTransparency = 0.4
+title.Text = "القائمة"
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 18
+title.Parent = menu
+
+local list = Instance.new("ScrollingFrame")
+list.Size = UDim2.new(1, -16, 1, -44)
+list.Position = UDim2.new(0, 8, 0, 40)
+list.BackgroundTransparency = 1
+list.ScrollBarThickness = 4
+list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+list.CanvasSize = UDim2.new()
+list.Parent = menu
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 6)
+layout.Parent = list
+
+local function makeButton(text)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(1, -6, 0, 38)
+	b.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+	b.BackgroundTransparency = 0.15
+	b.Text = text
+	b.TextColor3 = Color3.new(1, 1, 1)
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 15
+	b.Parent = list
+	corner(b)
+	return b
+end
+
+local function makeToggle(text, callback)
+	local b = makeButton(text .. " : OFF")
+	local on = false
+	b.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+	b.MouseButton1Click:Connect(function()
+		on = not on
+		b.Text = text .. (on and " : ON" or " : OFF")
+		b.BackgroundColor3 = on and Color3.fromRGB(40, 130, 60) or Color3.fromRGB(120, 40, 40)
+		callback(on)
+	end)
+end
+
+-- فتح/غلق بحركة
+local open = false
+toggleBtn.MouseButton1Click:Connect(function()
+	open = not open
+	if open then
+		menu.Size = UDim2.new(0, 0, 0, 0)
+		menu.Visible = true
+		TweenService:Create(menu, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = FULL}):Play()
+	else
+		local t = TweenService:Create(menu, TweenInfo.new(0.2), {Size = UDim2.new(0, 0, 0, 0)})
+		t:Play()
+		t.Completed:Wait()
+		if not open then menu.Visible = false end
+	end
+end)
+
+------------------------------------------------ 1) سكن مطور
+local outfitBtn = makeButton("سكن مطور")
+outfitBtn.MouseButton1Click:Connect(function()
+	task.spawn(function()
+		pcall(function()
+			RS.Remotes.AvatarEditorOutfitCodes:InvokeServer("Load", OUTFIT_CODE)
+		end)
+	end)
+end)
+
+------------------------------------------------ 2) اسم ملون (Toggle)
+local colorOn = false
+makeToggle("اسم ملون", function(v)
+	colorOn = v
+	if v then
+		task.spawn(function()
+			while colorOn do
+				pcall(function()
+					RS.RE["1RPNam1eColo1r"]:FireServer("PickingRPNameColor", Color3.fromHSV(math.random(), 1, 1))
+				end)
+				task.wait()
+			end
+		end)
+	end
+end)
+
+------------------------------------------------ 3) الانتقال
+local index = 0
+local flyMode = false
+local flySpeed = 100
+local currentTween, noclipConn
+
+local function stopFly()
+	if currentTween then currentTween:Cancel() currentTween = nil end
+	if noclipConn then noclipConn:Disconnect() noclipConn = nil end
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if hrp then hrp.Anchored = false end
+end
+
+local function goTo(p)
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	stopFly()
+	local target = CFrame.new(p[1], p[2] + 3, p[3])
+	if not flyMode then
+		hrp.CFrame = target
+		return
+	end
+	local dist = (hrp.Position - target.Position).Magnitude
+	hrp.Anchored = true
+	noclipConn = RunService.Stepped:Connect(function()
+		for _, part in ipairs(char:GetDescendants()) do
+			if part:IsA("BasePart") then part.CanCollide = false end
+		end
+	end)
+	currentTween = TweenService:Create(hrp, TweenInfo.new(dist / math.max(flySpeed, 1), Enum.EasingStyle.Linear), {CFrame = target})
+	local tw = currentTween
+	tw.Completed:Connect(function()
+		if currentTween == tw then stopFly() end
+	end)
+	tw:Play()
+end
+
+local tpBtn = makeButton("انتقال للمكان التالي (0/" .. #LOCATIONS .. ")")
+tpBtn.MouseButton1Click:Connect(function()
+	index = index % #LOCATIONS + 1
+	tpBtn.Text = "انتقال للمكان التالي (" .. index .. "/" .. #LOCATIONS .. ")"
+	goTo(LOCATIONS[index])
+end)
+
+local prevBtn = makeButton("المكان السابق")
+prevBtn.MouseButton1Click:Connect(function()
+	index = (index - 2) % #LOCATIONS + 1
+	tpBtn.Text = "انتقال للمكان التالي (" .. index .. "/" .. #LOCATIONS .. ")"
+	goTo(LOCATIONS[index])
+end)
+
+local modeBtn = makeButton("النمط: انتقال مباشر")
+modeBtn.MouseButton1Click:Connect(function()
+	flyMode = not flyMode
+	modeBtn.Text = flyMode and "النمط: طيران" or "النمط: انتقال مباشر"
+	if not flyMode then stopFly() end
+end)
+
+local speedBox = Instance.new("TextBox")
+speedBox.Size = UDim2.new(1, -6, 0, 38)
+speedBox.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+speedBox.BackgroundTransparency = 0.15
+speedBox.Text = tostring(flySpeed)
+speedBox.PlaceholderText = "سرعة الطيران"
+speedBox.TextColor3 = Color3.new(1, 1, 1)
+speedBox.Font = Enum.Font.GothamBold
+speedBox.TextSize = 15
+speedBox.ClearTextOnFocus = false
+speedBox.Parent = list
+corner(speedBox)
+speedBox.FocusLost:Connect(function()
+	local n = tonumber(speedBox.Text)
+	if n and n > 0 then flySpeed = n else speedBox.Text = tostring(flySpeed) end
+end)
+
+local stopBtn = makeButton("إيقاف الطيران")
+stopBtn.MouseButton1Click:Connect(stopFly)
