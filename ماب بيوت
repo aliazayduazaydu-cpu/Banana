@@ -1,6 +1,20 @@
 سكن مطور
-BH-AE-1db1ca4d9a3240c688521245b72a936f
+local Event = game:GetService("ReplicatedStorage").Remotes.AvatarEditorOutfitCodes
+Event:InvokeServer(
+    "Load",
+    "BH-AE-5bfe996ffbfd4f6b9beb4193debad7a7"
+)
 صور زر فتح و غلق 
 5607058253
 خلفيه قائمة
 128472281255983
+اسم ملون ويكون ب نضام toggle
+while true do
+local Event = game:GetService("ReplicatedStorage").RE["1RPNam1eColo1r"]
+Event:FireServer(
+    "PickingRPNameColor",
+    Color3.fromHSV(math.random(), 1, 1)
+)
+task.wait()
+end
+انتقال الى ذي اماكن وراه بعض ب زر واحد
