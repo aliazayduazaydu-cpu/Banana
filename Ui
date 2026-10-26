@@ -1,0 +1,86 @@
+local WindUI = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"
+))()
+
+local Window = WindUI:CreateWindow({
+    Title = "علاوي UI",
+    Icon = "rbxassetid://138567614125924",
+
+    OpenButton = {
+        Title = "فتح القائمة",
+        Enabled = true,
+        Draggable = true
+    }
+})
+
+local Tab = Window:Tab({
+    Title = "الرئيسية",
+    Icon = "home"
+})
+
+local function Sound()
+    local s = Instance.new("Sound")
+    s.SoundId = "rbxassetid://12446779253"
+    s.Volume = 0.7
+    s.Parent = game:GetService("SoundService")
+    s:Play()
+    s.Ended:Connect(function()
+        s:Destroy()
+    end)
+end
+
+Tab:Button({
+    Title = "زر",
+    Callback = function()
+        Sound()
+    end
+})
+
+Tab:Toggle({
+    Title = "تشغيل",
+    Value = false,
+    Callback = function(v)
+        Sound()
+        print(v)
+    end
+})
+
+Tab:Slider({
+    Title = "القيمة",
+    Value = {
+        Min = 0,
+        Max = 100,
+        Default = 50
+    },
+    Callback = function(v)
+        print(v)
+    end
+})
+
+Tab:Dropdown({
+    Title = "اختيار",
+    Values = {"1","2","3"},
+    Value = "1",
+    Callback = function(v)
+        print(v)
+    end
+})
+
+Tab:Input({
+    Title = "كتابة",
+    Placeholder = "اكتب هنا",
+    Callback = function(v)
+        print(v)
+    end
+})
+
+Tab:Paragraph({
+    Title = "معلومات",
+    Desc = "WindUI"
+})
+
+WindUI:Notify({
+    Title = "جاهز",
+    Content = "تم التشغيل",
+    Duration = 3
+})
