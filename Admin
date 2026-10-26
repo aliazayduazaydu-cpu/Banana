@@ -1,0 +1,164 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "Admin Script"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local function tween(obj, time, props, style, dir)
+	local t = TweenService:Create(obj, TweenInfo.new(time, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), props)
+	t:Play()
+	return t
+end
+
+-- القائمة (مربعة + حواف مدورة)
+local menu = Instance.new("ImageLabel")
+menu.Name = "Menu"
+menu.AnchorPoint = Vector2.new(0.5, 0.5)
+menu.Position = UDim2.new(0.5, 0, 0.5, 0)
+menu.Size = UDim2.new(0.32, 0, 0.32, 0)
+menu.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+menu.Image = "rbxassetid://11947484771"
+menu.ScaleType = Enum.ScaleType.Crop
+menu.Active = true
+menu.Parent = gui
+
+local ratio = Instance.new("UIAspectRatioConstraint")
+ratio.AspectRatio = 1 -- مربع
+ratio.AspectType = Enum.AspectType.ScaleWithParentSize
+ratio.DominantAxis = Enum.DominantAxis.Height
+ratio.Parent = menu
+
+local menuCorner = Instance.new("UICorner")
+menuCorner.CornerRadius = UDim.new(0.08, 0)
+menuCorner.Parent = menu
+
+local menuStroke = Instance.new("UIStroke")
+menuStroke.Color = Color3.fromRGB(255, 255, 255)
+menuStroke.Transparency = 0.6
+menuStroke.Thickness = 2
+menuStroke.Parent = menu
+
+-- حركة فتح القائمة
+local menuScale = Instance.new("UIScale")
+menuScale.Scale = 0
+menuScale.Parent = menu
+tween(menuScale, 0.45, {Scale = 1}, Enum.EasingStyle.Back)
+
+-- العنوان
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(0.7, 0, 0.14, 0)
+title.Position = UDim2.new(0.15, 0, 0.04, 0)
+title.BackgroundTransparency = 1
+title.Text = "Admin Script"
+title.TextColor3 = Color3.new(1, 1, 1)
+title.TextScaled = true
+title.Font = Enum.Font.GothamBold
+title.Parent = menu
+
+local titleStroke = Instance.new("UIStroke")
+titleStroke.Thickness = 1.5
+titleStroke.Parent = title
+
+-- زر X (دائري) لحذف القائمة
+local closeBtn = Instance.new("TextButton")
+closeBtn.Name = "Close"
+closeBtn.AnchorPoint = Vector2.new(1, 0)
+closeBtn.Size = UDim2.new(0.11, 0, 0.11, 0)
+closeBtn.Position = UDim2.new(0.96, 0, 0.04, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.new(1, 1, 1)
+closeBtn.TextScaled = true
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.Parent = menu
+
+local closeRatio = Instance.new("UIAspectRatioConstraint")
+closeRatio.Parent = closeBtn
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(1, 0)
+
+closeBtn.MouseButton1Click:Connect(function()
+	local t = tween(menuScale, 0.3, {Scale = 0}, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+	t.Completed:Wait()
+	gui:Destroy()
+end)
+
+-- دالة صنع زر دائري بصورة
+local function makeButton(name, image, xPos, callback)
+	local btn = Instance.new("ImageButton")
+	btn.Name = name
+	btn.Size = UDim2.new(0.26, 0, 0.26, 0)
+	btn.Position = UDim2.new(xPos, 0, 0.42, 0)
+	btn.BackgroundTransparency = 1
+	btn.Image = "rbxassetid://" .. image
+	btn.ScaleType = Enum.ScaleType.Fit
+	btn.Parent = menu
+
+	local r = Instance.new("UIAspectRatioConstraint")
+	r.Parent = btn
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0) -- دائري
+
+	local s = Instance.new("UIScale")
+	s.Parent = btn
+
+	btn.MouseEnter:Connect(function()
+		tween(s, 0.15, {Scale = 1.1})
+	end)
+	btn.MouseLeave:Connect(function()
+		tween(s, 0.15, {Scale = 1})
+	end)
+
+	btn.MouseButton1Click:Connect(function()
+		-- قفزة صغيرة
+		tween(s, 0.1, {Scale = 0.85}).Completed:Wait()
+		tween(s, 0.25, {Scale = 1.1}, Enum.EasingStyle.Back)
+		callback()
+	end)
+	return btn
+end
+
+-- الأزرار الثلاثة (حط كودك داخل كل دالة)
+makeButton("Button1", "71197419023467", 0.06, function()
+	print("زر 1")
+loadstring(game:HttpGet("https://rawscripts.net/raw/Universal-Script-Infinity-Yield-94242"))()
+end)
+
+makeButton("Button2", "116408682439333", 0.37, function()
+	print("زر 2")
+loadstring(game:HttpGet("https://scriptblox.com/raw/Universal-Script-Dex-PlusPlus-Decompiler-Fix-206651"))()
+end)
+
+makeButton("Button3", "127633283332495", 0.68, function()
+	print("زر 3")
+loadstring(game:HttpGet("https://scriptblox.com/raw/Universal-Script-cobalt-rspy-bad-backup-246112"))()
+end)
+
+-- سحب القائمة (جوال + كمبيوتر)
+local dragging, dragStart, startPos
+menu.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = menu.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch) then
+		local delta = input.Position - dragStart
+		menu.Position = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y
+		)
+	end
+end)
