@@ -1,0 +1,18 @@
+local Event = game:GetService("ReplicatedStorage").AddCheese
+Event:FireServer()
+local Event = game:GetService("ReplicatedStorage").AddCheese
+Event:FireServer()
+local Event = game:GetService("ReplicatedStorage").AddCheese
+Event:FireServer()
+local Event = game:GetService("ReplicatedStorage").AddCheese
+Event:FireServer()
+local Event = game:GetService("ReplicatedStorage").AddCheese
+Event:FireServer()
+local Event = game:GetService("ReplicatedStorage").AddCheese
+Event:FireServer()
+local Event = game:GetService("ReplicatedStorage").AddCheese
+Event:FireServer()
+local Event = game:GetService("ReplicatedStorage").AddCheese
+Event:FireServer()
+local Event = game:GetService("ReplicatedStorage").AddCheese
+Event:FireServer()
